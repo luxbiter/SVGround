@@ -18,6 +18,7 @@ type CanvasItem = {
   text?: string;
   src?: string;
   name?: string;
+  clipImageId?: string;
 };
 
 const FILTERS: Array<{ key: FilterKey; name: string; short: string; formula: string; color: string }> = [
@@ -175,8 +176,25 @@ export default function Home() {
 
   function renderItemArtwork(item: CanvasItem) {
     const source = item.text || boardSource;
-    if (item.kind === "image" && item.src) return <div className="image-frame"><img src={item.src} alt={item.name || "업로드 이미지"} draggable="false" style={filterStyle(item)} /><span>{item.name}</span></div>;
+    if (item.kind === "image" && item.src && item.filter !== "mask") return <div className="image-frame"><img src={item.src} alt={item.name || "업로드 이미지"} draggable="false" style={filterStyle(item)} /><span>{item.name}</span></div>;
     if (item.kind === "note") return <div className="note-art"><span>✦</span><strong>{source}</strong><small>Drag me around.<br />Layer things on top.</small></div>;
+    if (item.filter === "mask") {
+      const clipImage = items.find((candidate) => candidate.id === item.clipImageId && candidate.src);
+      const maskText = item.text || (item.kind === "image" ? "MASK" : source);
+      const clipSource = clipImage?.src || item.src;
+      return <svg className="item-svg mask-artwork" viewBox="0 0 300 190" role="img" aria-label="클리핑 마스크 오브젝트">
+        <defs>
+          <clipPath id={`clip-path-${item.id}`}><text x="150" y="102" textAnchor="middle" dominantBaseline="middle" fontSize="61" fontWeight="900" letterSpacing="-3">{maskText}</text></clipPath>
+          <linearGradient id={`mask-gradient-${item.id}`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#ff806c" /><stop offset=".48" stopColor="#d8ff4f" /><stop offset="1" stopColor="#9b80ff" /></linearGradient>
+        </defs>
+        <rect width="300" height="190" rx="22" fill="#20263a" />
+        <g clipPath={`url(#clip-path-${item.id})`} filter="url(#svg-filter-mask)">
+          {clipSource ? <image href={clipSource} x="0" y="0" width="300" height="190" preserveAspectRatio="xMidYMid slice" /> : <rect width="300" height="190" fill={`url(#mask-gradient-${item.id})`} />}
+          <circle cx="68" cy="55" r="58" fill="#6fdff0" opacity=".68" /><circle cx="246" cy="144" r="78" fill="#ff806c" opacity=".55" />
+        </g>
+        <text className="mask-outline" x="150" y="102" textAnchor="middle" dominantBaseline="middle" fontSize="61" fontWeight="900" letterSpacing="-3">{maskText}</text>
+      </svg>;
+    }
     if (item.kind === "text") return <svg className="item-svg" viewBox="0 0 300 110" style={filterStyle(item)}><defs><linearGradient id={`text-gradient-${item.id}`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#ff806c" /><stop offset=".5" stopColor="#d8ff4f" /><stop offset="1" stopColor="#9b80ff" /></linearGradient></defs><text x="150" y="60" textAnchor="middle" dominantBaseline="middle" fontSize="72" fontWeight="900" letterSpacing="-4" fill={`url(#text-gradient-${item.id})`}>{source}</text></svg>;
     return <svg className="item-svg" viewBox="0 0 300 190" style={filterStyle(item)}><defs><linearGradient id={`shape-gradient-${item.id}`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#d8ff4f" /><stop offset=".5" stopColor="#80dced" /><stop offset="1" stopColor="#9b80ff" /></linearGradient></defs><rect width="300" height="190" rx="24" fill={`url(#shape-gradient-${item.id})`} /><circle cx="58" cy="46" r="54" fill="#fff" opacity=".2" /><circle cx="255" cy="146" r="70" fill="#ff806c" opacity=".45" /><text x="150" y="104" textAnchor="middle" dominantBaseline="middle" fontSize="52" fontWeight="900" fill="#172331">{source}</text></svg>;
   }
@@ -217,7 +235,9 @@ export default function Home() {
         {!selected ? <div className="empty-inspector"><span>⌁</span><strong>Select an object</strong><small>캔버스의 오브젝트를 선택하면<br />필터 실험을 시작할 수 있습니다.</small></div> : <>
           <div className="selected-summary"><span className="summary-dot" style={{ background: selectedFilter.color }} /><div><strong>{selected.kind.toUpperCase()} OBJECT</strong><small>{selectedFilter.short} · {selected.name || selected.text || "untitled"}</small></div><b>{String(selected.z).padStart(2, "0")}</b></div>
           <section className="inspector-section"><div className="inspector-label"><span>APPLY FILTER</span><span>5 EFFECTS</span></div><div className="filter-stack">{FILTERS.map((filter, index) => <button key={filter.key} className={selected.filter === filter.key ? "is-active" : ""} onClick={() => updateSelected({ filter: filter.key })}><span className="filter-number">0{index + 1}</span><i style={{ background: filter.color }} /><span><strong>{filter.name}</strong><small>{filter.short}</small></span><b>{selected.filter === filter.key ? "✓" : ""}</b></button>)}</div></section>
-          <section className="inspector-section"><div className="inspector-label"><span>OBJECT</span><span>{selected.width} × {selected.height}</span></div>{selected.kind === "text" || selected.kind === "shape" || selected.kind === "note" ? <input className="source-field" value={selected.text || ""} onChange={(event) => updateSelected({ text: event.target.value })} aria-label="오브젝트 텍스트" /> : <div className="file-name">{selected.name || "Uploaded image"}</div>}<div className="layer-actions"><button onClick={() => changeLayer("back")}>↓ 뒤로</button><button onClick={() => changeLayer("front")}>↑ 앞으로</button></div></section>
+          <section className="inspector-section"><div className="inspector-label"><span>OBJECT</span><span>{selected.width} × {selected.height}</span></div>{selected.filter === "mask" || selected.kind === "text" || selected.kind === "shape" || selected.kind === "note" ? <input className="source-field" value={selected.text || (selected.filter === "mask" ? "MASK" : "")} onChange={(event) => updateSelected({ text: event.target.value })} aria-label={selected.filter === "mask" ? "마스크 모양 텍스트" : "오브젝트 텍스트"} /> : <div className="file-name">{selected.name || "Uploaded image"}</div>}<div className="layer-actions"><button onClick={() => changeLayer("back")}>↓ 뒤로</button><button onClick={() => changeLayer("front")}>↑ 앞으로</button></div></section>
+          {selected.filter === "mask" && <section className="inspector-section clip-control"><div className="inspector-label"><span>CLIP IMAGE</span><span>{items.filter((item) => item.kind === "image").length} AVAILABLE</span></div><select className="clip-select" value={selected.clipImageId || ""} onChange={(event) => updateSelected({ clipImageId: event.target.value || undefined })}><option value="">Gradient texture</option>{items.filter((item) => item.kind === "image" && item.src).map((item) => <option key={item.id} value={item.id}>{item.name || "Uploaded image"}</option>)}</select><small className="control-help">텍스트/이모지 모양 안에 이 이미지를 넣습니다.</small></section>}
+          <section className="inspector-section layers-section"><div className="inspector-label"><span>LAYER ORDER</span><span>TOP → BACK</span></div><div className="layer-list">{[...items].sort((a, b) => b.z - a.z).map((item, index) => <button key={item.id} className={`layer-row ${item.id === selectedId ? "is-active" : ""}`} onClick={() => setSelectedId(item.id)}><span className="layer-rank">{String(index + 1).padStart(2, "0")}</span><i className={`layer-kind ${item.kind}`} /><span className="layer-name">{item.kind.toUpperCase()} / {item.name || item.text || "untitled"}</span><b>{item.id === selectedId ? "●" : ""}</b></button>)}</div></section>
           <section className="inspector-section controls"><div className="inspector-label"><span>FILTER INTENSITY</span><span>{Math.round(intensity * 100)}%</span></div><input className="range-input" type="range" min="0" max="1" step=".01" value={intensity} onChange={(event) => setIntensity(Number(event.target.value))} /><div className="range-ends"><span>SUBTLE</span><span>CHAOS</span></div><div className="motion-row"><div><strong>LIVE MOTION</strong><small>{animated ? "animation loop on" : "paused"}</small></div><button className={`toggle ${animated ? "is-on" : ""}`} onClick={() => setAnimated((value) => !value)} aria-label="애니메이션 토글" aria-pressed={animated}><i /></button></div></section>
           <button className="delete-button" onClick={removeSelected}>Delete selected object</button>
         </>}
