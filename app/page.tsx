@@ -77,7 +77,8 @@ export default function Home() {
   const [intensity, setIntensity] = useState(.58);
   const [animated, setAnimated] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [pointer, setPointer] = useState({ x: 50, y: 50 });
+  const [pointer, setPointer] = useState({ x: -40, y: -40 });
+  const [boardCursor, setBoardCursor] = useState({ x: 50, y: 50 });
   const [dropActive, setDropActive] = useState(false);
   const [boardSource, setBoardSource] = useState("SVGround");
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -89,13 +90,15 @@ export default function Home() {
   const maxZ = useMemo(() => items.reduce((max, item) => Math.max(max, item.z), 0), [items]);
 
   function boardPoint(event: ReactPointerEvent<HTMLDivElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect();
+    const bounds = canvasRef.current?.getBoundingClientRect();
+    if (!bounds) return { x: 50, y: 50 };
     return { x: clamp(((event.clientX - bounds.left) / bounds.width) * 100, 0, 100), y: clamp(((event.clientY - bounds.top) / bounds.height) * 100, 0, 100) };
   }
 
   function handleBoardMove(event: ReactPointerEvent<HTMLDivElement>) {
     const point = boardPoint(event);
-    setPointer(point);
+    setBoardCursor(point);
+    setPointer({ x: event.clientX, y: event.clientY });
     const drag = dragRef.current;
     if (!drag) return;
     setItems((current) => current.map((item) => item.id === drag.id ? { ...item, x: clamp(point.x - drag.offsetX, 3, 97), y: clamp(point.y - drag.offsetY, 7, 93) } : item));
@@ -195,7 +198,7 @@ export default function Home() {
       </header>
 
       <div className="board-status"><span className="status-live" /> DRAG IMAGES HERE <span>/</span> MOVE + OVERLAP FREELY</div>
-      <div className="cursor-crosshair" style={{ left: `${pointer.x}%`, top: `${pointer.y}%` }} aria-hidden="true"><i /><i /></div>
+      <div className="cursor-crosshair" style={{ left: pointer.x, top: pointer.y }} aria-hidden="true"><i /><i /></div>
       {dropActive && <div className="drop-overlay"><strong>DROP IMAGES TO ADD THEM</strong><span>여러 이미지를 한 번에 배치할 수 있습니다.</span></div>}
 
       <main className="board-space">
@@ -221,7 +224,7 @@ export default function Home() {
         <div className="inspector-footer"><span>SESSION ONLY</span><span>NOT SAVED</span></div>
       </aside>}
 
-      <footer className="freeform-bottom-bar"><div><span className="item-count">{items.length} objects</span><span className="drop-tip">· No cloud storage ·</span></div><div className="bottom-actions"><button onClick={() => fileInputRef.current?.click()}>＋ Add images</button><button onClick={addText}>＋ Text</button><button onClick={addShape}>＋ Shape</button></div><div className="board-coords">{Math.round(pointer.x)} / {Math.round(pointer.y)}</div></footer>
+      <footer className="freeform-bottom-bar"><div><span className="item-count">{items.length} objects</span><span className="drop-tip">· No cloud storage ·</span></div><div className="bottom-actions"><button onClick={() => fileInputRef.current?.click()}>＋ Add images</button><button onClick={addText}>＋ Text</button><button onClick={addShape}>＋ Shape</button></div><div className="board-coords">{Math.round(boardCursor.x)} / {Math.round(boardCursor.y)}</div></footer>
     </div>
   </div>;
 }
