@@ -183,7 +183,7 @@ export default function Home() {
 
   return <div className={`freeform-app ${dropActive ? "is-dropping" : ""}`}>
     <FilterDefs intensity={intensity} animated={animated} />
-    <div className="canvas-surface" ref={canvasRef} onPointerMove={handleBoardMove} onPointerUp={endDrag} onPointerLeave={endDrag} onDragOver={(event) => { event.preventDefault(); setDropActive(true); }} onDragLeave={() => setDropActive(false)} onDrop={handleDrop} onPointerDown={() => setSelectedId(null)}>
+    <div className="canvas-surface" ref={canvasRef} onPointerMove={handleBoardMove} onPointerUp={endDrag} onPointerLeave={endDrag} onDragOver={(event) => { event.preventDefault(); setDropActive(true); }} onDragLeave={() => setDropActive(false)} onDrop={handleDrop} onPointerDown={(event) => { if (event.target === event.currentTarget) setSelectedId(null); }}>
       <header className="freeform-topbar">
         <div className="brand-lockup"><span className="brand-mark"><i /><i /><i /></span><div><strong>SVGround</strong><small>LOCAL FILTER CANVAS</small></div></div>
         <div className="tool-palette" aria-label="캔버스 도구">
