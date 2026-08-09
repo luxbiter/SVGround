@@ -7,70 +7,48 @@ type SourceMode = "text" | "emoji" | "image";
 
 const FILTERS: Array<{
   key: FilterKey;
-  index: string;
   name: string;
-  detail: string;
-  tag: string;
+  formula: string;
+  color: string;
+  short: string;
 }> = [
-  {
-    key: "displace",
-    index: "01",
-    name: "뒤틀기",
-    detail: "TURBULENCE / DISPLACEMENT",
-    tag: "WOBBLE",
-  },
-  {
-    key: "slime",
-    index: "02",
-    name: "슬라임",
-    detail: "BLUR / CONTRAST",
-    tag: "GOO",
-  },
-  {
-    key: "mask",
-    index: "03",
-    name: "클리핑 마스크",
-    detail: "TYPE / SHAPE",
-    tag: "MASK",
-  },
-  {
-    key: "glass",
-    index: "04",
-    name: "리퀴드 글래스",
-    detail: "REFRACTION / GLOW",
-    tag: "GLASS",
-  },
-  {
-    key: "orbit",
-    index: "05",
-    name: "마우스 반응",
-    detail: "POINTER / ORBIT",
-    tag: "TRACK",
-  },
+  { key: "displace", name: "뒤틀기", formula: "feTurbulence + feDisplacementMap", color: "#a6d8ff", short: "WOBBLE" },
+  { key: "slime", name: "슬라임", formula: "feGaussianBlur + feColorMatrix", color: "#d8ff4f", short: "GOO" },
+  { key: "mask", name: "클리핑 마스크", formula: "clipPath + feTurbulence", color: "#ffc7dd", short: "MASK" },
+  { key: "glass", name: "리퀴드 글래스", formula: "displacement + soft light", color: "#c9c4ff", short: "GLASS" },
+  { key: "orbit", name: "마우스 반응", formula: "pointer coordinates + orbit", color: "#b9efd8", short: "TRACK" },
 ];
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+function IconButton({
+  label,
+  children,
+  active = false,
+  onClick,
+}: {
+  label: string;
+  children: React.ReactNode;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return <button className={`icon-button ${active ? "is-active" : ""}`} aria-label={label} onClick={onClick}>{children}</button>;
+}
 
 export default function Home() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("displace");
   const [sourceMode, setSourceMode] = useState<SourceMode>("text");
-  const [sourceText, setSourceText] = useState("SVGROUND");
+  const [sourceText, setSourceText] = useState("SVGround");
   const [intensity, setIntensity] = useState(0.58);
   const [animated, setAnimated] = useState(true);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [selectedObject, setSelectedObject] = useState("filter-object");
+  const [zoom, setZoom] = useState(75);
   const [pointer, setPointer] = useState({ x: 54, y: 42 });
 
   const active = FILTERS.find((filter) => filter.key === activeFilter) ?? FILTERS[0];
-  const stageVars = {
-    "--pointer-x": `${pointer.x}%`,
-    "--pointer-y": `${pointer.y}%`,
-  } as React.CSSProperties;
-
-  const normalizedSource = useMemo(() => {
-    const trimmed = sourceText.trim();
-    return trimmed || (sourceMode === "emoji" ? "✦" : "SVGROUND");
-  }, [sourceMode, sourceText]);
+  const normalizedSource = useMemo(() => sourceText.trim() || (sourceMode === "emoji" ? "✦" : "SVGround"), [sourceMode, sourceText]);
 
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -79,7 +57,7 @@ export default function Home() {
     setSourceMode("image");
   }
 
-  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+  function handleCanvasMove(event: React.PointerEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     setPointer({
       x: clamp(((event.clientX - bounds.left) / bounds.width) * 100, 0, 100),
@@ -87,394 +65,151 @@ export default function Home() {
     });
   }
 
-  function renderSource(options: {
-    x?: number;
-    y?: number;
-    width?: number;
-    height?: number;
-    fontSize?: number;
-    fill?: string;
-    opacity?: number;
-    className?: string;
-  } = {}) {
-    const { x = 450, y = 310, width = 720, height = 330, fontSize = 118, fill = "currentColor", opacity = 1, className } = options;
-
+  function renderSource(options: { x?: number; y?: number; fontSize?: number; fill?: string; opacity?: number } = {}) {
+    const { x = 270, y = 165, fontSize = 74, fill = "currentColor", opacity = 1 } = options;
     if (sourceMode === "image" && imageUrl) {
-      return (
-        <image
-          href={imageUrl}
-          x={x - width / 2}
-          y={y - height / 2}
-          width={width}
-          height={height}
-          preserveAspectRatio="xMidYMid slice"
-          opacity={opacity}
-          className={className}
-        />
-      );
+      return <image href={imageUrl} x="72" y="34" width="396" height="260" preserveAspectRatio="xMidYMid slice" opacity={opacity} />;
     }
-
-    return (
-      <text
-        x={x}
-        y={y}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontSize={sourceMode === "emoji" ? fontSize * 1.45 : fontSize}
-        fontWeight="900"
-        letterSpacing={sourceMode === "emoji" ? 0 : -5}
-        fill={fill}
-        opacity={opacity}
-        className={className}
-      >
-        {normalizedSource}
-      </text>
-    );
+    return <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={sourceMode === "emoji" ? fontSize * 1.35 : fontSize} fontWeight="900" letterSpacing={sourceMode === "emoji" ? 0 : -3} fill={fill} opacity={opacity}>{normalizedSource}</text>;
   }
 
-  function renderPreview() {
-    const displacementScale = Math.round(12 + intensity * 56);
-    const slimeGap = Math.round(80 - intensity * 62);
-    const orbitX = (pointer.x / 100) * 900;
-    const orbitY = (pointer.y / 100) * 580;
+  function renderArtwork() {
+    const scale = Math.round(12 + intensity * 52);
+    const orbitX = (pointer.x / 100) * 540;
+    const orbitY = (pointer.y / 100) * 310;
 
     if (activeFilter === "displace") {
-      return (
-        <svg className="preview-svg" viewBox="0 0 900 580" role="img" aria-label="뒤틀기 필터 미리보기">
-          <defs>
-            <linearGradient id="displace-surface" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#d7ff47" />
-              <stop offset="0.46" stopColor="#a6e1ff" />
-              <stop offset="1" stopColor="#886cff" />
-            </linearGradient>
-            <filter id="displace-filter" x="-20%" y="-20%" width="140%" height="140%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="2" seed="8" result="noise">
-                {animated && (
-                  <animate attributeName="baseFrequency" dur="4.5s" values="0.012;0.032;0.012" repeatCount="indefinite" />
-                )}
-              </feTurbulence>
-              <feDisplacementMap in="SourceGraphic" in2="noise" scale={displacementScale} xChannelSelector="R" yChannelSelector="G">
-                {animated && (
-                  <animate attributeName="scale" dur="3.8s" values={`${displacementScale};${displacementScale + 16};${displacementScale}`} repeatCount="indefinite" />
-                )}
-              </feDisplacementMap>
-            </filter>
-            <filter id="displace-shadow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="16" />
-            </filter>
-          </defs>
-          <rect width="900" height="580" fill="#101522" />
-          <circle cx="690" cy="90" r="170" fill="#253b64" opacity="0.46" filter="url(#displace-shadow)" />
-          <g filter="url(#displace-filter)" transform={`translate(${(pointer.x - 50) * 0.12} ${(pointer.y - 50) * 0.1})`}>
-            <rect x="82" y="88" width="736" height="390" rx="34" fill="url(#displace-surface)" />
-            <circle cx="156" cy="154" r="90" fill="#ffffff" opacity="0.22" />
-            <circle cx="742" cy="428" r="152" fill="#ff6b9d" opacity="0.58" />
-            {renderSource({ x: 450, y: 286, width: 680, height: 292, fontSize: 116, fill: "#121827", opacity: 0.94 })}
-          </g>
-          <g className="svg-ui-label">
-            <text x="86" y="532">feTURBULENCE</text>
-            <text x="814" y="532" textAnchor="end">SCALE {displacementScale}</text>
-          </g>
-        </svg>
-      );
+      return <svg className="filter-artwork" viewBox="0 0 540 310" role="img" aria-label="뒤틀기 필터가 적용된 오브젝트">
+        <defs>
+          <linearGradient id="wobble-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#d8ff4f" /><stop offset="0.48" stopColor="#8fe1ff" /><stop offset="1" stopColor="#8c73ff" /></linearGradient>
+          <filter id="wobble-filter" x="-20%" y="-25%" width="140%" height="150%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="8" result="noise">{animated && <animate attributeName="baseFrequency" dur="4.5s" values="0.018;0.036;0.018" repeatCount="indefinite" />}</feTurbulence>
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale={scale} xChannelSelector="R" yChannelSelector="G">{animated && <animate attributeName="scale" dur="3.6s" values={`${scale};${scale + 14};${scale}`} repeatCount="indefinite" />}</feDisplacementMap>
+          </filter>
+        </defs>
+        <rect width="540" height="310" fill="#172230" />
+        <g filter="url(#wobble-filter)"><rect x="40" y="32" width="460" height="246" rx="26" fill="url(#wobble-fill)" /><circle cx="100" cy="72" r="70" fill="#fff" opacity=".22" /><circle cx="458" cy="250" r="100" fill="#ff709b" opacity=".56" />{renderSource({ fill: "#172230", opacity: .93 })}</g>
+        <text x="20" y="294" className="art-label">FE TURBULENCE / SCALE {scale}</text>
+      </svg>;
     }
 
     if (activeFilter === "slime") {
-      return (
-        <svg className="preview-svg" viewBox="0 0 900 580" role="img" aria-label="슬라임 필터 미리보기">
-          <defs>
-            <filter id="slime-filter" x="-20%" y="-20%" width="140%" height="140%" colorInterpolationFilters="sRGB">
-              <feGaussianBlur stdDeviation={5 + intensity * 15} result="blur" />
-              <feColorMatrix in="blur" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" />
-            </filter>
-            <linearGradient id="slime-fill" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#d8ff53" />
-              <stop offset="0.52" stopColor="#58e8ab" />
-              <stop offset="1" stopColor="#4db6ff" />
-            </linearGradient>
-            <radialGradient id="slime-glow">
-              <stop offset="0" stopColor="#d9ff65" stopOpacity="0.55" />
-              <stop offset="1" stopColor="#d9ff65" stopOpacity="0" />
-            </radialGradient>
-          </defs>
-          <rect width="900" height="580" fill="#e9f1ea" />
-          <circle cx="140" cy="80" r="240" fill="url(#slime-glow)" />
-          <circle cx="790" cy="510" r="280" fill="#c7deff" opacity="0.5" />
-          <g filter="url(#slime-filter)" fill="url(#slime-fill)">
-            <circle cx={250 - slimeGap / 2} cy="292" r="110" />
-            <circle cx={450} cy="280" r="146" />
-            <circle cx={650 + slimeGap / 2} cy="300" r="104" />
-            <rect x="290" y="254" width="320" height="112" rx="56" />
-            {sourceMode === "image" && imageUrl ? renderSource({ x: 450, y: 294, width: 240, height: 200, opacity: 0.9 }) : renderSource({ x: 450, y: 296, fontSize: 88, fill: "#173b45" })}
-          </g>
-          <g className="svg-ui-label dark-label">
-            <text x="86" y="532">BLUR + COLOR MATRIX</text>
-            <text x="814" y="532" textAnchor="end">STICK {Math.round(intensity * 100)}%</text>
-          </g>
-        </svg>
-      );
+      const gap = Math.round(48 - intensity * 35);
+      return <svg className="filter-artwork" viewBox="0 0 540 310" role="img" aria-label="슬라임 필터가 적용된 오브젝트">
+        <defs>
+          <linearGradient id="goo-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e0ff63" /><stop offset="0.52" stopColor="#53e6b0" /><stop offset="1" stopColor="#58bfff" /></linearGradient>
+          <filter id="goo-filter" x="-25%" y="-25%" width="150%" height="150%" colorInterpolationFilters="sRGB"><feGaussianBlur stdDeviation={6 + intensity * 12} result="blur" /><feColorMatrix in="blur" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" /></filter>
+        </defs>
+        <rect width="540" height="310" fill="#eff4ef" />
+        <g filter="url(#goo-filter)" fill="url(#goo-fill)"><circle cx={142 - gap} cy="164" r="72" /><circle cx="270" cy="154" r="91" /><circle cx={398 + gap} cy="166" r="65" /><rect x="157" y="131" width="226" height="70" rx="35" />{renderSource({ fontSize: 53, fill: "#173a45" })}</g>
+        <text x="20" y="294" className="art-label art-label-dark">GAUSSIAN BLUR / CONTRAST {Math.round(intensity * 100)}%</text>
+      </svg>;
     }
 
     if (activeFilter === "mask") {
-      return (
-        <svg className="preview-svg" viewBox="0 0 900 580" role="img" aria-label="클리핑 마스크 미리보기">
-          <defs>
-            <clipPath id="type-clip" clipPathUnits="userSpaceOnUse">
-              <text x="450" y="312" textAnchor="middle" dominantBaseline="middle" fontSize="126" fontWeight="900" letterSpacing="-6">
-                {normalizedSource}
-              </text>
-            </clipPath>
-            <linearGradient id="mask-gradient" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#ff7057" />
-              <stop offset="0.5" stopColor="#ffc857" />
-              <stop offset="1" stopColor="#f0449d" />
-            </linearGradient>
-            <filter id="mask-grain">
-              <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" seed="3" result="grain" />
-              <feBlend in="SourceGraphic" in2="grain" mode="soft-light" />
-            </filter>
-          </defs>
-          <rect width="900" height="580" fill="#211a2d" />
-          <g clipPath="url(#type-clip)" filter="url(#mask-grain)">
-            <rect width="900" height="580" fill="url(#mask-gradient)" />
-            <circle cx={170 + pointer.x * 2} cy={110 + pointer.y} r="180" fill="#5edbff" opacity="0.78" />
-            <circle cx={720 - pointer.x} cy="455" r="220" fill="#773eff" opacity="0.6" />
-            <path d="M-20 470 C180 310 330 560 505 390 S760 270 930 380 L930 620 L-20 620Z" fill="#d3ff48" opacity="0.68" />
-            {imageUrl && sourceMode === "image" && renderSource({ x: 450, y: 290, width: 900, height: 580, opacity: 0.46 })}
-          </g>
-          <text className="mask-outline" x="450" y="312" textAnchor="middle" dominantBaseline="middle" fontSize="126" fontWeight="900" letterSpacing="-6">
-            {normalizedSource}
-          </text>
-          <g className="svg-ui-label light-label">
-            <text x="86" y="532">CLIPPATH / TYPE SHAPE</text>
-            <text x="814" y="532" textAnchor="end">LIVE MASK</text>
-          </g>
-        </svg>
-      );
+      return <svg className="filter-artwork" viewBox="0 0 540 310" role="img" aria-label="클리핑 마스크가 적용된 오브젝트">
+        <defs>
+          <clipPath id="type-clip"><text x="270" y="164" textAnchor="middle" dominantBaseline="middle" fontSize="76" fontWeight="900" letterSpacing="-3">{normalizedSource}</text></clipPath>
+          <linearGradient id="mask-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ff806c" /><stop offset=".5" stopColor="#ffd25d" /><stop offset="1" stopColor="#ef55a4" /></linearGradient>
+          <filter id="mask-noise"><feTurbulence type="fractalNoise" baseFrequency=".028" numOctaves="3" seed="3" result="grain" /><feBlend in="SourceGraphic" in2="grain" mode="soft-light" /></filter>
+        </defs>
+        <rect width="540" height="310" fill="#291c31" />
+        <g clipPath="url(#type-clip)" filter="url(#mask-noise)"><rect width="540" height="310" fill="url(#mask-fill)" /><circle cx={90 + pointer.x} cy={60 + pointer.y / 2} r="115" fill="#5edbff" opacity=".78" /><circle cx="432" cy="268" r="150" fill="#7245ff" opacity=".62" /><path d="M-30 252 C118 142 198 302 310 205 S460 148 590 234 L590 340 L-30 340Z" fill="#d8ff4f" opacity=".65" /></g>
+        <text x="270" y="164" className="mask-outline" textAnchor="middle" dominantBaseline="middle" fontSize="76" fontWeight="900" letterSpacing="-3">{normalizedSource}</text>
+        <text x="20" y="294" className="art-label">CLIPPATH / TYPE SHAPE</text>
+      </svg>;
     }
 
     if (activeFilter === "glass") {
-      return (
-        <svg className="preview-svg" viewBox="0 0 900 580" role="img" aria-label="리퀴드 글래스 필터 미리보기">
-          <defs>
-            <linearGradient id="glass-bg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#cfdeff" />
-              <stop offset="0.5" stopColor="#d8f5ef" />
-              <stop offset="1" stopColor="#ffe0d2" />
-            </linearGradient>
-            <filter id="glass-filter" x="-20%" y="-20%" width="140%" height="140%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="2" seed="11" result="glass-noise">
-                {animated && <animate attributeName="baseFrequency" dur="7s" values="0.02;0.04;0.02" repeatCount="indefinite" />}
-              </feTurbulence>
-              <feDisplacementMap in="SourceGraphic" in2="glass-noise" scale={4 + intensity * 18} result="refraction" />
-              <feGaussianBlur in="refraction" stdDeviation="0.65" result="soft" />
-              <feColorMatrix in="soft" values="1.04 0 0 0 0  0 1.04 0 0 0  0 0 1.04 0 0  0 0 0 0.88 0" />
-            </filter>
-          </defs>
-          <rect width="900" height="580" fill="url(#glass-bg)" />
-          <circle cx={110 + pointer.x} cy={120 + pointer.y} r="142" fill="#ee6a9c" opacity="0.82" />
-          <circle cx={730 - pointer.x / 2} cy="156" r="185" fill="#9f81ff" opacity="0.66" />
-          <rect x="120" y="110" width="660" height="360" rx="48" fill="#ffffff" opacity="0.12" stroke="#ffffff" strokeOpacity="0.78" strokeWidth="2" filter="url(#glass-filter)" />
-          <g filter="url(#glass-filter)">
-            <circle cx={260 + pointer.x / 4} cy={350 - pointer.y / 5} r="74" fill="#d3ff48" opacity="0.82" />
-            <circle cx={675 - pointer.x / 5} cy={355 + pointer.y / 7} r="92" fill="#56b6ff" opacity="0.84" />
-            {renderSource({ x: 450, y: 284, fontSize: 92, fill: "#182332", opacity: 0.86 })}
-          </g>
-          <g className="svg-ui-label dark-label">
-            <text x="86" y="532">REFRACTION / SOFT LIGHT</text>
-            <text x="814" y="532" textAnchor="end">MOVE POINTER</text>
-          </g>
-        </svg>
-      );
+      return <svg className="filter-artwork" viewBox="0 0 540 310" role="img" aria-label="리퀴드 글래스 필터가 적용된 오브젝트">
+        <defs>
+          <linearGradient id="glass-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#d5e2ff" /><stop offset=".5" stopColor="#d8f6ed" /><stop offset="1" stopColor="#ffe0d3" /></linearGradient>
+          <filter id="glass-filter" x="-25%" y="-25%" width="150%" height="150%"><feTurbulence type="fractalNoise" baseFrequency=".03" numOctaves="2" seed="11" result="noise">{animated && <animate attributeName="baseFrequency" dur="7s" values=".022;.042;.022" repeatCount="indefinite" />}</feTurbulence><feDisplacementMap in="SourceGraphic" in2="noise" scale={4 + intensity * 16} result="refraction" /><feGaussianBlur in="refraction" stdDeviation=".6" /><feColorMatrix values="1.04 0 0 0 0  0 1.04 0 0 0  0 0 1.04 0 0  0 0 0 .9 0" /></filter>
+        </defs>
+        <rect width="540" height="310" fill="url(#glass-bg)" /><circle cx={74 + pointer.x / 2} cy={52 + pointer.y / 2} r="90" fill="#f174a5" opacity=".75" /><circle cx={460 - pointer.x / 3} cy="56" r="120" fill="#9481ff" opacity=".58" />
+        <rect x="44" y="38" width="452" height="230" rx="32" fill="#fff" opacity=".18" stroke="#fff" strokeWidth="2" filter="url(#glass-filter)" />
+        <g filter="url(#glass-filter)"><circle cx={152 + pointer.x / 5} cy="225" r="48" fill="#d8ff4f" opacity=".88" /><circle cx={410 - pointer.x / 6} cy="224" r="58" fill="#54bfff" opacity=".82" />{renderSource({ fontSize: 55, fill: "#182331", opacity: .87 })}</g>
+        <text x="20" y="294" className="art-label art-label-dark">REFRACTION / SOFT LIGHT</text>
+      </svg>;
     }
 
-    return (
-      <svg className="preview-svg" viewBox="0 0 900 580" role="img" aria-label="마우스 반응 오빗 필터 미리보기">
-        <defs>
-          <radialGradient id="orbit-bg" cx="50%" cy="50%">
-            <stop offset="0" stopColor="#293c75" />
-            <stop offset="1" stopColor="#0b0f1c" />
-          </radialGradient>
-          <filter id="orbit-glow" x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="7" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <linearGradient id="orbit-line" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#d8ff48" />
-            <stop offset="1" stopColor="#5de5e4" />
-          </linearGradient>
-        </defs>
-        <rect width="900" height="580" fill="url(#orbit-bg)" />
-        <g opacity="0.42" stroke="#8194ca" strokeWidth="1">
-          <path d="M0 145 H900 M0 290 H900 M0 435 H900" />
-          <path d="M225 0 V580 M450 0 V580 M675 0 V580" />
-        </g>
-        <g transform={`translate(${orbitX} ${orbitY})`}>
-          <circle r={102 + intensity * 50} fill="none" stroke="url(#orbit-line)" strokeWidth="2" strokeDasharray="4 10" opacity="0.72">
-            {animated && <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="12s" repeatCount="indefinite" />}
-          </circle>
-          <circle r="58" fill="#d8ff48" opacity="0.92" filter="url(#orbit-glow)" />
-          <circle cx="0" cy={-102 - intensity * 50} r="9" fill="#ff8565" />
-          <circle cx={102 + intensity * 50} cy="0" r="7" fill="#6bcdff" />
-          <path d="M-185 0 H185 M0 -185 V185" stroke="#d8ff48" strokeWidth="1" opacity="0.45" />
-          {renderSource({ x: 0, y: 5, fontSize: sourceMode === "emoji" ? 50 : 38, fill: "#102022" })}
-        </g>
-        <g className="svg-ui-label light-label">
-          <text x="86" y="532">POINTER X {Math.round(pointer.x)} / Y {Math.round(pointer.y)}</text>
-          <text x="814" y="532" textAnchor="end">ORBIT ONLINE</text>
-        </g>
-      </svg>
-    );
+    return <svg className="filter-artwork" viewBox="0 0 540 310" role="img" aria-label="마우스 반응 필터가 적용된 오브젝트">
+      <defs><radialGradient id="orbit-bg"><stop offset="0" stopColor="#354a85" /><stop offset="1" stopColor="#111826" /></radialGradient><filter id="orbit-glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="6" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter></defs>
+      <rect width="540" height="310" fill="url(#orbit-bg)" /><g opacity=".33" stroke="#9bb0dd" strokeWidth="1"><path d="M0 78H540M0 155H540M0 232H540M135 0V310M270 0V310M405 0V310" /></g>
+      <g transform={`translate(${orbitX} ${orbitY})`}><circle r={54 + intensity * 28} fill="none" stroke="#d8ff4f" strokeWidth="2" strokeDasharray="3 8" />{animated && <circle r="80" fill="none" stroke="#90e7ee" strokeWidth="1" strokeDasharray="2 16"><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="10s" repeatCount="indefinite" /></circle>}<circle r="31" fill="#d8ff4f" filter="url(#orbit-glow)" /><circle cx="0" cy={-54 - intensity * 28} r="6" fill="#ff806c" />{renderSource({ x: 0, y: 3, fontSize: sourceMode === "emoji" ? 30 : 22, fill: "#132127" })}</g>
+      <text x="20" y="294" className="art-label">POINTER {Math.round(pointer.x)} / {Math.round(pointer.y)} · ORBIT</text>
+    </svg>;
   }
 
-  return (
-    <div className="site-shell">
-      <header className="topbar">
-        <a className="brand" href="#top" aria-label="SVGround home">
-          <span className="brand-mark"><i /><i /><i /></span>
-          <span>SVGround</span>
-        </a>
-        <nav className="topnav" aria-label="주요 메뉴">
-          <a href="#playground">Playground</a>
-          <a href="#library">Filter index</a>
-          <a href="#about">About</a>
-        </nav>
-        <div className="header-status"><span className="status-dot" /> SVG / LIVE</div>
+  return <div className="freeform-app">
+    <div className="canvas-surface" onPointerMove={handleCanvasMove}>
+      <header className="freeform-topbar">
+        <div className="topbar-left">
+          <IconButton label="뒤로">‹</IconButton>
+          <div className="board-title"><strong>SVG Filter Lab</strong><span>⌄</span><small>iCloud에 저장됨</small></div>
+        </div>
+        <div className="tool-palette" aria-label="캔버스 도구">
+          <IconButton label="선택 도구" active>◉</IconButton>
+          <IconButton label="텍스트 도구">A</IconButton>
+          <IconButton label="도형 도구">▱</IconButton>
+          <IconButton label="이미지 도구">▧</IconButton>
+          <IconButton label="필터 실험실" active={inspectorOpen} onClick={() => setInspectorOpen((open) => !open)}>✦</IconButton>
+        </div>
+        <div className="topbar-right">
+          <IconButton label="실행 취소">↶</IconButton>
+          <IconButton label="다시 실행">↷</IconButton>
+          <IconButton label="공유">↑</IconButton>
+          <IconButton label="더 보기">•••</IconButton>
+          <IconButton label="편집">□↗</IconButton>
+        </div>
       </header>
 
-      <main id="top">
-        <section className="hero-section">
-          <div className="hero-copy">
-            <p className="eyebrow"><span>01</span> A HANDS-ON SVG FILTER PLAYGROUND</p>
-            <h1>Make<br /><em>pixels</em> move<span className="title-dot">.</span></h1>
-            <p className="hero-description">브라우저 안에서 SVG 필터를 만지고, 흔들고, 녹여보세요. 코드를 몰라도 바로 반응하고, 코드를 알면 더 깊이 들어갈 수 있습니다.</p>
-            <a className="hero-cta" href="#playground">Open the playground <span>↘</span></a>
-          </div>
-          <div className="hero-art-wrap" aria-hidden="true">
-            <div className="hero-index">FILTER / 05</div>
-            <svg className="hero-art" viewBox="0 0 580 460">
-              <defs>
-                <linearGradient id="hero-gradient" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stopColor="#d8ff48" />
-                  <stop offset="0.52" stopColor="#68d8eb" />
-                  <stop offset="1" stopColor="#ff806d" />
-                </linearGradient>
-                <filter id="hero-wobble" x="-20%" y="-20%" width="140%" height="140%">
-                  <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="2" seed="5" result="hero-noise">
-                    <animate attributeName="baseFrequency" dur="6s" values="0.015;0.03;0.015" repeatCount="indefinite" />
-                  </feTurbulence>
-                  <feDisplacementMap in="SourceGraphic" in2="hero-noise" scale="22" xChannelSelector="R" yChannelSelector="G">
-                    <animate attributeName="scale" dur="4s" values="18;34;18" repeatCount="indefinite" />
-                  </feDisplacementMap>
-                </filter>
-              </defs>
-              <circle cx="300" cy="236" r="178" fill="#162032" stroke="#2c3b55" strokeWidth="1" />
-              <g filter="url(#hero-wobble)">
-                <path d="M170 226 C170 126 265 72 356 116 C433 154 457 250 407 320 C365 380 267 385 205 328 C180 305 170 270 170 226Z" fill="url(#hero-gradient)" />
-                <circle cx="250" cy="164" r="58" fill="#fff" opacity="0.24" />
-                <circle cx="392" cy="308" r="74" fill="#794fff" opacity="0.42" />
-                <text x="300" y="250" textAnchor="middle" dominantBaseline="middle" fontSize="58" fontWeight="900" letterSpacing="-4" fill="#17202c">SVG</text>
-              </g>
-              <path d="M300 20 V92 M300 380 V452 M84 236 H156 M444 236 H516" stroke="#c6d5ef" strokeWidth="1" opacity="0.4" />
-              <circle cx="300" cy="236" r="224" fill="none" stroke="#364865" strokeWidth="1" strokeDasharray="2 12" />
-            </svg>
-            <div className="hero-caption"><span>feDisplacementMap</span><span>01 / 05</span></div>
-          </div>
-        </section>
+      <div className="board-status"><span className="status-live" /> FILTER LAB <span>/</span> EXPERIMENT 01</div>
+      <div className="cursor-crosshair" style={{ left: `${pointer.x}%`, top: `${pointer.y}%` }} aria-hidden="true"><i /><i /></div>
 
-        <section className="workspace-section" id="playground">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow"><span>02</span> THE PLAYGROUND</p>
-              <h2>Pick a filter.<br /><span>Push it around.</span></h2>
-            </div>
-            <p className="section-note">마우스를 움직이거나<br />슬라이더를 당겨보세요.</p>
-          </div>
+      <main className="board-space">
+        <div className="board-label label-top">SVG FILTER / PLAYGROUND</div>
+        <div className="board-label label-bottom">MOVE POINTER · SELECT OBJECT · APPLY FILTER</div>
 
-          <div className="workspace-grid">
-            <aside className="control-panel panel">
-              <div className="panel-title"><span>FILTER STACK</span><span>0{FILTERS.length}</span></div>
-              <div className="filter-list" role="tablist" aria-label="SVG filter 선택">
-                {FILTERS.map((filter) => (
-                  <button
-                    key={filter.key}
-                    className={`filter-option ${activeFilter === filter.key ? "is-active" : ""}`}
-                    onClick={() => setActiveFilter(filter.key)}
-                    role="tab"
-                    aria-selected={activeFilter === filter.key}
-                  >
-                    <span className="filter-number">{filter.index}</span>
-                    <span className="filter-name"><strong>{filter.name}</strong><small>{filter.detail}</small></span>
-                    <span className="filter-arrow">↗</span>
-                  </button>
-                ))}
-              </div>
+        <button className={`canvas-object filter-object ${selectedObject === "filter-object" ? "is-selected" : ""}`} onClick={() => setSelectedObject("filter-object")} aria-label="필터 오브젝트 선택">
+          <span className="object-badge">LIVE FILTER OBJECT</span>
+          <span className="object-index">01</span>
+          {renderArtwork()}
+          {selectedObject === "filter-object" && <span className="selection-label">FILTER OBJECT <b>⌘</b></span>}
+        </button>
 
-              <div className="control-divider" />
-              <div className="control-section">
-                <div className="control-label"><span>YOUR SOURCE</span><span className="control-value">{sourceMode.toUpperCase()}</span></div>
-                <div className="source-switch" role="tablist" aria-label="소스 타입">
-                  <button className={sourceMode === "text" ? "is-selected" : ""} onClick={() => setSourceMode("text")}>TYPE</button>
-                  <button className={sourceMode === "emoji" ? "is-selected" : ""} onClick={() => { setSourceMode("emoji"); if (sourceText === "SVGROUND") setSourceText("✦"); }}>EMOJI</button>
-                  <label className={sourceMode === "image" ? "is-selected" : ""}>IMAGE<input type="file" accept="image/*" onChange={handleImageChange} /></label>
-                </div>
-                {sourceMode === "image" && imageUrl ? (
-                  <div className="uploaded-source"><span>IMAGE LOADED</span><button onClick={() => { setImageUrl(null); setSourceMode("text"); }}>REMOVE</button></div>
-                ) : (
-                  <input className="source-input" value={sourceText} maxLength={18} onChange={(event) => setSourceText(event.target.value)} aria-label="미리보기 텍스트" />
-                )}
-              </div>
+        <button className={`canvas-object color-object ${selectedObject === "palette-object" ? "is-selected" : ""}`} onClick={() => setSelectedObject("palette-object")} aria-label="컬러 팔레트 오브젝트 선택">
+          <span className="small-object-head"><span>COLOR STUDY</span><b>02</b></span>
+          <span className="color-title">{normalizedSource}</span>
+          <span className="swatch-row"><i /><i /><i /><i /><i /></span>
+          <span className="small-object-foot">SOURCE / {sourceMode.toUpperCase()}</span>
+        </button>
 
-              <div className="control-section slider-section">
-                <div className="control-label"><span>INTENSITY</span><span className="control-value">{Math.round(intensity * 100)}%</span></div>
-                <input className="range-input" type="range" min="0" max="1" step="0.01" value={intensity} onChange={(event) => setIntensity(Number(event.target.value))} aria-label="필터 강도" />
-                <div className="range-ends"><span>SUBTLE</span><span>CHAOS</span></div>
-              </div>
+        <button className={`canvas-object note-object ${selectedObject === "note-object" ? "is-selected" : ""}`} onClick={() => setSelectedObject("note-object")} aria-label="실험 메모 선택">
+          <span className="note-pin">✦</span><strong>Try moving<br />your cursor.</strong><span>마우스를 움직이면<br />필터가 반응합니다.</span>
+        </button>
 
-              <div className="control-section toggle-section">
-                <div><strong>LIVE MOTION</strong><small>{animated ? "animation loop on" : "animation paused"}</small></div>
-                <button className={`toggle ${animated ? "is-on" : ""}`} onClick={() => setAnimated((value) => !value)} aria-label="애니메이션 켜기/끄기" aria-pressed={animated}><span /></button>
-              </div>
+        <button className={`canvas-object mini-object ${selectedObject === "mini-object" ? "is-selected" : ""}`} onClick={() => { setSelectedObject("mini-object"); setActiveFilter("glass"); }} aria-label="글래스 오브젝트 선택">
+          <svg viewBox="0 0 145 105"><defs><linearGradient id="mini-gradient" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#ff9c89" /><stop offset=".55" stopColor="#b8bcff" /><stop offset="1" stopColor="#d8ff4f" /></linearGradient></defs><rect width="145" height="105" rx="14" fill="url(#mini-gradient)" /><circle cx="35" cy="29" r="23" fill="#fff" opacity=".32" /><circle cx="111" cy="74" r="34" fill="#7b5cf5" opacity=".36" /><text x="73" y="58" textAnchor="middle" fontSize="23" fontWeight="900" fill="#17212c">glass</text></svg>
+          <span>GLASS / 04</span>
+        </button>
 
-              <div className="panel-footnote"><span className="spark">✳</span><p>필터는 클라이언트에서<br />실시간으로 렌더링됩니다.</p></div>
-            </aside>
-
-            <section className="stage-panel panel">
-              <div className="stage-toolbar"><div><span className="stage-live"><i /> LIVE CANVAS</span><span className="stage-filter">/{active.tag}</span></div><span className="stage-code">SVG / FILTER</span></div>
-              <div className="artboard" style={stageVars} onPointerMove={handlePointerMove} onPointerLeave={() => setPointer({ x: 54, y: 42 })}>
-                <div className="cursor-readout"><span>POINTER</span><strong>{Math.round(pointer.x)} / {Math.round(pointer.y)}</strong></div>
-                {renderPreview()}
-                <div className="artboard-cursor" aria-hidden="true"><span /></div>
-              </div>
-              <div className="stage-footer"><span>DRAG YOUR CURSOR INSIDE THE CANVAS</span><span className="stage-footer-key">{active.index} / {active.name}</span></div>
-            </section>
-          </div>
-        </section>
-
-        <section className="index-section" id="library">
-          <div className="section-heading index-heading">
-            <div><p className="eyebrow"><span>03</span> FILTER INDEX</p><h2>Small primitives.<br /><span>Big feelings.</span></h2></div>
-            <p className="section-note">SVG의 작은 레고 블록들이<br />화면의 질감을 바꿉니다.</p>
-          </div>
-          <div className="index-grid">
-            <article className="index-card card-lime"><span className="card-num">01</span><div className="card-symbol wave-symbol">≈</div><h3>feTurbulence</h3><p>노이즈를 만들어<br />움직임의 씨앗이 됩니다.</p><span className="card-tag">NOISE FIELD</span></article>
-            <article className="index-card card-purple"><span className="card-num">02</span><div className="card-symbol goo-symbol"><i /><i /><i /></div><h3>feDisplacementMap</h3><p>이미지의 픽셀을<br />새 좌표로 밀어냅니다.</p><span className="card-tag">PIXEL SHIFT</span></article>
-            <article className="index-card card-coral"><span className="card-num">03</span><div className="card-symbol blur-symbol" /><h3>feGaussianBlur</h3><p>경계를 녹이고<br />형태 사이를 연결합니다.</p><span className="card-tag">SOFT EDGE</span></article>
-            <article className="index-card card-blue"><span className="card-num">04</span><div className="card-symbol clip-symbol">A</div><h3>clipPath</h3><p>원하는 모양 안에<br />그래픽을 가둡니다.</p><span className="card-tag">SHARP SHAPE</span></article>
-          </div>
-        </section>
-
-        <section className="about-section" id="about">
-          <div className="about-mark"><span>SVG</span><span>GROUND</span></div>
-          <div className="about-copy"><p className="eyebrow"><span>04</span> KEEP EXPLORING</p><p>필터 하나를 조합하면<br /><em>새로운 표정</em>이 됩니다.</p></div>
-          <div className="about-meta"><span>BUILT FOR CURIOUS MINDS</span><span>2026 / SVGROUND</span></div>
-        </section>
+        {inspectorOpen && <aside className="filter-inspector" aria-label="필터 실험실">
+          <div className="inspector-header"><div><span className="inspector-eyebrow">INSPECTOR</span><h2>Filter lab</h2></div><button onClick={() => setInspectorOpen(false)} aria-label="실험실 닫기">×</button></div>
+          <div className="selected-summary"><span className="summary-dot" style={{ background: active.color }} /><div><strong>{selectedObject === "filter-object" ? "Filter object" : "Canvas object"}</strong><small>Selected · {active.short}</small></div><b>01</b></div>
+          <div className="inspector-section"><div className="inspector-label"><span>APPLY FILTER</span><span>05 EFFECTS</span></div><div className="filter-stack">{FILTERS.map((filter, index) => <button key={filter.key} className={activeFilter === filter.key ? "is-active" : ""} onClick={() => { setActiveFilter(filter.key); setSelectedObject("filter-object"); }}><span className="filter-number">0{index + 1}</span><span className="filter-color" style={{ background: filter.color }} /><span className="filter-copy"><strong>{filter.name}</strong><small>{filter.short}</small></span><span className="filter-check">{activeFilter === filter.key ? "✓" : ""}</span></button>)}</div></div>
+          <div className="inspector-section controls"><div className="inspector-label"><span>PARAMETERS</span><span>{Math.round(intensity * 100)}%</span></div><label className="parameter-label">INTENSITY<input type="range" min="0" max="1" step=".01" value={intensity} onChange={(event) => setIntensity(Number(event.target.value))} /></label><div className="parameter-ends"><span>QUIET</span><span>LOUD</span></div><div className="motion-row"><div><strong>LIVE MOTION</strong><small>{animated ? "Playing animation loop" : "Paused"}</small></div><button className={`toggle ${animated ? "is-on" : ""}`} onClick={() => setAnimated((value) => !value)} aria-label="라이브 모션 켜기" aria-pressed={animated}><i /></button></div></div>
+          <div className="inspector-section source-section"><div className="inspector-label"><span>SOURCE</span><span>{sourceMode.toUpperCase()}</span></div><div className="source-tabs"><button className={sourceMode === "text" ? "is-active" : ""} onClick={() => setSourceMode("text")}>TYPE</button><button className={sourceMode === "emoji" ? "is-active" : ""} onClick={() => { setSourceMode("emoji"); if (sourceText === "SVGround") setSourceText("✦"); }}>EMOJI</button><label className={sourceMode === "image" ? "is-active" : ""}>IMAGE<input type="file" accept="image/*" onChange={handleImageChange} /></label></div>{sourceMode === "image" && imageUrl ? <div className="image-loaded"><span>IMAGE LOADED</span><button onClick={() => { setImageUrl(null); setSourceMode("text"); }}>REMOVE</button></div> : <input className="source-field" value={sourceText} onChange={(event) => setSourceText(event.target.value)} maxLength={18} aria-label="필터 소스" />}</div>
+          <div className="formula"><span>FILTER CHAIN</span><code>{active.formula}</code></div>
+        </aside>}
       </main>
 
-      <footer className="site-footer"><span>SVGround</span><span>SVG FILTER PLAYGROUND</span><span>MADE TO BE TWEAKED</span></footer>
+      <div className="canvas-hint"><span className="hint-key">⌘</span><span>Click an object to inspect</span></div>
+      <footer className="freeform-bottom-bar">
+        <div className="zoom-control"><button onClick={() => setZoom((value) => clamp(value - 10, 25, 200))} aria-label="축소">−</button><strong>{zoom}%</strong><button onClick={() => setZoom((value) => clamp(value + 10, 25, 200))} aria-label="확대">＋</button></div>
+        <div className="bottom-center"><button aria-label="보드 보기">☷</button><button className="bottom-active" aria-label="현재 보드">▣</button><span>Filter Lab</span></div>
+        <div className="bottom-right"><button aria-label="연결 보기">⌘</button><button aria-label="보드 설정">▦</button></div>
+      </footer>
     </div>
-  );
+  </div>;
 }
